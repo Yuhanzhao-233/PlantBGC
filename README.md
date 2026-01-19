@@ -3,7 +3,7 @@
 PlantBGC detects candidate biosynthetic gene clusters (BGCs) in **plant genomes** by modeling genomes as **ordered Pfam-domain sequences** and scoring BGC-likeness with an **encoder-only Transformer**.
 The framework supports (i) microbial supervised pretraining, (ii) **label-free plant domain adaptation** via masked language modeling (MLM), and (iii) optional weak-supervision strategies to reduce primary-metabolism false positives while preserving secondary-metabolism signals.
 
-> This repository contains the training/evaluation scripts used in our paper: **“PlantBGC”** (manuscript in progress).
+> This repository contains the training/evaluation scripts used in our paper: **“PlantBGC”** .
 
 ---
 
@@ -16,12 +16,13 @@ The framework supports (i) microbial supervised pretraining, (ii) **label-free p
 
 ---
 
-## What you can do with this repo
+## What you get
 
-* Train a BGC-likeness detector on microbial Pfam sequences (Stage 1)
-* Adapt the detector to plants using unlabeled plant Pfam sequences (Stage 2)
-* Run inference to produce candidate plant loci and scores
-* Evaluate recovery/coverage on curated plant BGCs and compare with plantiSMASH (Stage 2/3 experiments)
+- **Candidate CDS and BGC loci** 
+- **BGC-likeness scores** (Transformer-based) for ranking and triage
+- *(Optional)* **GO/KEGG proxy labels** for analysis / weak supervision:
+  - KEGG proxy is reported as **primary / secondary / mixed / review**, but
+  - GO proxy follows the project label scheme
 
 ---
 

@@ -1,210 +1,180 @@
-# DeepBGC: Biosynthetic Gene Cluster detection and classification
+# PlantBGC: Transformer-based Plant Biosynthetic Gene Cluster Detection
 
-DeepBGC detects BGCs in bacterial and fungal genomes using deep learning. 
-DeepBGC employs a Bidirectional Long Short-Term Memory Recurrent Neural Network 
-and a word2vec-like vector embedding of Pfam protein domains. 
-Product class and activity of detected BGCs is predicted using a Random Forest classifier.
+PlantBGC detects candidate biosynthetic gene clusters (BGCs) in **plant genomes** by modeling genomes as **ordered Pfam-domain sequences** and scoring BGC-likeness with an **encoder-only Transformer**.
+The framework supports (i) microbial supervised pretraining, (ii) **label-free plant domain adaptation** via masked language modeling (MLM), and (iii) optional weak-supervision strategies to reduce primary-metabolism false positives while preserving secondary-metabolism signals.
 
-[![BioConda Install](https://img.shields.io/conda/dn/bioconda/deepbgc.svg?style=flag&label=BioConda%20install&color=green)](https://anaconda.org/bioconda/deepbgc) 
-![PyPI - Downloads](https://img.shields.io/pypi/dm/deepbgc.svg?color=green&label=PyPI%20downloads)
-[![PyPI license](https://img.shields.io/pypi/l/deepbgc.svg)](https://pypi.python.org/pypi/deepbgc/)
-[![PyPI version](https://badge.fury.io/py/deepbgc.svg)](https://badge.fury.io/py/deepbgc)
-[![CI](https://api.travis-ci.org/Merck/deepbgc.svg?branch=master)](https://travis-ci.org/Merck/deepbgc)
+> This repository contains the training/evaluation scripts used in our paper: **“PlantBGC”** (manuscript in progress).
 
-![DeepBGC architecture](images/deepbgc.architecture.png?raw=true "DeepBGC architecture")
+---
 
-## 📌 News 📌
+## Key ideas (paper-level summary)
 
-- **DeepBGC 0.1.23**: Predicted BGCs can now be uploaded for visualization in **antiSMASH** using a JSON output file
-  - Install and run DeepBGC as usual based on instructions below
-  - Upload `antismash.json` from the DeepBGC output folder using "Upload extra annotations" on the [antiSMASH](https://antismash.secondarymetabolites.org/) page
-  - Predicted BGC regions and their prediction scores will be displayed alongside antiSMASH BGCs
- 
-## Publications
+* **Representation**: genome → ordered Pfam tokens (domain sequence)
+* **Stage 1 (microbial supervision)**: train a Transformer detector on curated microbial BGC positives vs negatives
+* **Stage 2 (plant adaptation, no plant labels)**: continue pretraining on unlabeled plant Pfam sequences with **MLM** to align plant Pfam co-occurrence statistics
+* **Stage 3 (weak supervision, optional)**: inject soft negatives (e.g., GO/KEGG-based) to reduce “primary-like” false positives
 
-A deep learning genome-mining strategy for biosynthetic gene cluster prediction <br>
-Geoffrey D Hannigan,  David Prihoda et al., Nucleic Acids Research, gkz654, https://doi.org/10.1093/nar/gkz654
+---
 
-## Install using conda (recommended)
+## What you can do with this repo
 
-You can install DeepBGC using [Conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/download.html) 
-or one of the alternatives ([Miniconda](https://docs.conda.io/en/latest/miniconda.html), 
-[Miniforge](https://github.com/conda-forge/miniforge)).
+* Train a BGC-likeness detector on microbial Pfam sequences (Stage 1)
+* Adapt the detector to plants using unlabeled plant Pfam sequences (Stage 2)
+* Run inference to produce candidate plant loci and scores
+* Evaluate recovery/coverage on curated plant BGCs and compare with plantiSMASH (Stage 2/3 experiments)
 
-Set up Bioconda and Conda-Forge channels:
+---
+
+## Installation
+
+### Option A: conda (recommended)
 
 ```bash
-conda config --add channels bioconda
-conda config --add channels conda-forge
+conda create -n plantbgc python=3.10 -y
+conda activate plantbgc
+pip install -r requirements.txt
 ```
 
-Install DeepBGC using:
+### Option B: pip (if you enjoy pain)
 
 ```bash
-# Create a separate DeepBGC environment and install dependencies
-conda create -n deepbgc python=3.7 hmmer prodigal
-
-# Install DeepBGC into the environment using pip
-conda activate deepbgc
-pip install deepbgc
-
-# Alternatively, install everything using conda (currently unstable due to conda conflicts)
-conda install deepbgc
+pip install -r requirements.txt
 ```
 
+> If you rely on external gene calling / Pfam annotation tools, install them separately and ensure they are on PATH.
 
-## Install dependencies manually (if conda is not available)
+---
 
-If you don't mind installing the HMMER and Prodigal dependencies manually, you can also install DeepBGC using pip:
+## Data format
 
-- Install Python version 3.6 or 3.7 (Note: **Python 3.8 is not supported** due to Tensorflow < 2.0 dependency)
-- Install Prodigal and put the `prodigal` binary it on your PATH: https://github.com/hyattpd/Prodigal/releases
-- Install HMMER and put the `hmmscan` and `hmmpress` binaries on your PATH: http://hmmer.org/download.html
-- Run `pip install deepbgc` to install DeepBGC   
+### Pfam-domain TSV (required)
 
-## Use DeepBGC
+We assume a tokenized TSV where each row is a Pfam hit for one protein, and proteins are ordered by genomic position within a contig/chromosome.
 
-### Download models and Pfam database
+**Minimum recommended columns**
 
-Before you can use DeepBGC, download trained models and Pfam database:
+* `sequence_id`: ID for a continuous ordered region (e.g., contig/chromosome segment)
+* `pfam_id`: Pfam accession (token)
+* `protein_id` (or equivalent): optional but helpful for debugging
+* `start`, `end` (optional): genomic/protein coordinates if available
+
+> If you already have a pipeline that outputs `*.pfam.tsv`, keep it. PlantBGC mainly cares about **order + Pfam IDs + sequence grouping**.
+
+---
+
+## Quickstart
+
+### 1) Prepare / check your TSV
+
+Put TSVs under something like:
+
+```
+data/
+  train/
+    positives.pfam.tsv
+    negatives.pfam.tsv
+  plant_unlabeled/
+    plant_unlabeled.pfam.tsv
+  eval/
+    curated_plant_bgcs.pfam.tsv
+```
+
+### 2) Train Stage 1 (microbial base)
 
 ```bash
-deepbgc download
+python train_stage1.py \
+  --pos data/train/positives.pfam.tsv \
+  --neg data/train/negatives.pfam.tsv \
+  --out checkpoints/stage1.pt
 ```
 
-You can display downloaded dependencies and models using:
+### 3) Stage 2 adaptation (MLM on unlabeled plant Pfams)
 
 ```bash
-deepbgc info
+python adapt_stage2_mlm.py \
+  --init checkpoints/stage1.pt \
+  --unlabeled data/plant_unlabeled/plant_unlabeled.pfam.tsv \
+  --out checkpoints/stage2.pt
 ```
 
-### Detection and classification
-
-![DeepBGC pipeline](images/deepbgc.pipeline.png?raw=true "DeepBGC pipeline")
-
-Detect and classify BGCs in a genomic sequence. 
-Proteins and Pfam domains are detected automatically if not already annotated (HMMER and Prodigal needed)
+### 4) Inference on plant genomes (Pfam TSV)
 
 ```bash
-# Show command help docs
-deepbgc pipeline --help
-
-# Detect and classify BGCs in mySequence.fa using DeepBGC detector.
-deepbgc pipeline mySequence.fa
-
-# Detect and classify BGCs in mySequence.fa using custom DeepBGC detector trained on your own data.
-deepbgc pipeline --detector path/to/myDetector.pkl mySequence.fa
+python predict.py \
+  --model checkpoints/stage2.pt \
+  --input data/eval/plant_genome.pfam.tsv \
+  --out outputs/plant_candidates.tsv
 ```
 
-This will produce a `mySequence` directory with multiple files and a README.txt with file descriptions.
+---
 
-See [Train DeepBGC on your own data](#train-deepbgc-on-your-own-data) section below for more information about training a custom detector or classifier.
+## Reproducing paper experiments (recommended layout)
 
-#### Example output
+### Stage 1 (microbial)
 
-See the [DeepBGC Example Result Notebook](https://nbviewer.jupyter.org/urls/github.com/Merck/deepbgc/releases/download/v0.1.0/DeepBGC_Example_Result.ipynb).
-Data can be downloaded on the [releases page](https://github.com/Merck/deepbgc/releases)
+* 10-fold CV and leave-class-out evaluation
+* Compare: Transformer vs DeepBGC-style BiLSTM baseline vs shallow baseline (e.g., RF)
 
-![Detected BGC Regions](images/deepbgc.bgc.png?raw=true "Detected BGC regions")
+### Stage 2 (plants, no labels for training)
 
-## Train DeepBGC on your own data
+* Evaluate recovery of curated plant BGCs under increasing locus-coverage thresholds
+* Compare Stage1-only vs Stage2-adapted
+* Compare with plantiSMASH overlap/IoU + compactness (length ratio)
 
-You can train your own BGC detection and classification models, see `deepbgc train --help` for documentation and examples.
+### Stage 3 (weak supervision, optional)
 
-Training and validation data can be found in [release 0.1.0](https://github.com/Merck/deepbgc/releases/tag/v0.1.0) and [release 0.1.5](https://github.com/Merck/deepbgc/releases/tag/v0.1.5). You will need:
-- Positive (BGC) training data - In most cases, this is your own BGC training set, see "Preparing training data" section below
-- Negative (Non-BGC) training data - Needed for BGC detection. You can use `GeneSwap_Negatives.pfam.tsv` from release https://github.com/Merck/deepbgc/releases/tag/v0.1.0
-- Validation data - Needed for BGC detection. Contigs with annotated BGC and non-BGC regions. A working example can be downloaded from https://github.com/Merck/deepbgc/releases/tag/v0.1.5
-- Trained Pfam2vec vectors - "Vocabulary" converting Pfam IDs to meaningful numeric vectors, you can reuse previously trained `pfam2vec.csv` results from https://github.com/Merck/deepbgc/releases/tag/v0.1.0
-- JSON configuration files - See JSON section below
+* Add GO/KEGG soft negatives (or other priors) to reduce primary-metabolism false positives
+* Compare Stage2 vs Stage3 on false positive rate and curated BGC coverage
 
-If you have any questions about using or training DeepBGC, feel free to submit an issue.
+> Scripts for each stage should be documented under `scripts/` (or update this README once finalized).
 
-### Preparing training data
+---
 
-The training examples need to be prepared in Pfam TSV format, which can be prepared from your sequence
-using `deepbgc prepare`. 
+## Output
 
-First, you will need to manually add an `in_cluster` column that will contain 0 for pfams outside a BGC 
-and 1 for pfams inside a BGC. We recommend preparing a separate negative TSV and positive TSV file, 
-where the column will be equal to all 0 or 1 respectively. 
+Typical outputs include:
 
-Finally, you will need to manually add a `sequence_id` column ,
-which will identify a continuous sequence of Pfams from a single sample (BGC or negative sequence).
-The samples are shuffled during training to present the model with a random order of positive and negative samples.
-Pfams with the same `sequence_id` value will be kept together. For example, if your training set contains multiple BGCs, the `sequence_id` column should contain the BGC ID.
+* per-token BGC-likeness scores
+* predicted candidate loci with boundaries (start/end in token space)
+* summary metrics (ROC-AUC, coverage thresholds, compactness vs plantiSMASH)
 
-**! New in version 0.1.17 !** You can now prepare *protein* FASTA sequences into a Pfam TSV file using `deepbgc prepare --protein`.
+---
 
+## Repository structure (suggested)
 
-### JSON model training template files
-
-DeepBGC is using JSON template files to define model architecture and training parameters. All templates can be downloaded in [release 0.1.0](https://github.com/Merck/deepbgc/releases/tag/v0.1.0).
-
-JSON template for DeepBGC LSTM **detector** with pfam2vec is structured as follows:
 ```
-{
-  "type": "KerasRNN", - Model architecture (KerasRNN/DiscreteHMM/GeneBorderHMM)
-  "build_params": { - Parameters for model architecture
-    "batch_size": 16, - Number of splits of training data that is trained in parallel 
-    "hidden_size": 128, - Size of vector storing the LSTM inner state
-    "stateful": true - Remember previous sequence when training next batch
-  },
-  "fit_params": {
-    "timesteps": 256, - Number of pfam2vec vectors trained in one batch
-    "validation_size": 0, - Fraction of training data to use for validation (if validation data is not provided explicitly). Use 0.2 for 20% data used for testing.
-    "verbose": 1, - Verbosity during training
-    "num_epochs": 1000, - Number of passes over your training set during training. You probably want to use a lower number if not using early stopping on validation data.
-    "early_stopping" : { - Stop model training when at certain validation performance
-      "monitor": "val_auc_roc", - Use validation AUC ROC to observe performance
-      "min_delta": 0.0001, - Stop training when the improvement in the last epochs did not improve more than 0.0001
-      "patience": 20, - How many of the last epochs to check for improvement
-      "mode": "max" - Stop training when given metric stops increasing (use "min" for decreasing metrics like loss)
-    },
-    "shuffle": true, - Shuffle samples in each epoch. Will use "sequence_id" field to group pfam vectors belonging to the same sample and shuffle them together 
-    "optimizer": "adam", - Optimizer algorithm
-    "learning_rate": 0.0001, - Learning rate
-    "weighted": true - Increase weight of less-represented class. Will give more weight to BGC training samples if the non-BGC set is larger.
-  },
-  "input_params": {
-    "features": [ - Array of features to use in model, see deepbgc/features.py
-      {
-        "type": "ProteinBorderTransformer" - Add two binary flags for pfam domains found at beginning or at end of protein
-      },
-      {
-        "type": "Pfam2VecTransformer", - Convert pfam_id field to pfam2vec vector using provided pfam2vec table
-        "vector_path": "#{PFAM2VEC}" - PFAM2VEC variable is filled in using command line argument --config
-      }
-    ]
-  }
+PlantBGC/
+  models/                # model definitions
+  data_utils/            # TSV parsing, tokenization, masking, batching
+  scripts/               # training/adaptation/eval entrypoints
+  outputs/               # predictions + evaluation results
+  README.md
+  requirements.txt
+```
+
+---
+
+## Citation
+
+If you use this code in academic work, please cite:
+
+```bibtex
+@article{plantbgc2026,
+  title   = {PlantBGC: Transformer-based Detection of Plant Biosynthetic Gene Clusters from Pfam-domain Sequences},
+  author  = {Zhao, Yuhan and Guo, Zhishan and Sui, Ning and others},
+  year    = {2026},
+  note    = {Manuscript in preparation}
 }
 ```
 
-JSON template for Random Forest **classifier** is structured as follows:
-```
-{
-  "type": "RandomForestClassifier", - Type of classifier (RandomForestClassifier)
-  "build_params": {
-    "n_estimators": 100, - Number of trees in random forest
-    "random_state": 0 - Random seed used to get same result each time
-  },
-  "input_params": {
-    "sequence_as_vector": true, - Convert each sample into a single vector
-    "features": [
-      {
-        "type": "OneHotEncodingTransformer" - Convert each sequence of Pfams into a single binary vector (Pfam set)
-      }
-    ]
-  }
-}
-```
+---
 
-### Using your trained model
+## License
 
-Since version `0.1.10` you can provide a direct path to the detector or classifier model like so:
-```bash
-deepbgc pipeline \
-    mySequence.fa \
-    --detector path/to/myDetector.pkl \
-    --classifier path/to/myClassifier.pkl 
-```
+TBD (choose one: MIT / Apache-2.0 / BSD-3-Clause)
+
+---
+
+## Acknowledgements
+
+This project builds on ideas from genome mining and domain-sequence modeling, and is inspired by prior BGC detection pipelines in microbes.

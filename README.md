@@ -20,8 +20,8 @@ The framework supports (i) microbial supervised pretraining, (ii) **label-free p
 
 - **Candidate CDS and BGC loci** 
 - **BGC-likeness scores** (Transformer-based) for ranking and triage
-- *(Optional)* **GO/KEGG proxy labels** for analysis / weak supervision:
-  - KEGG proxy is reported as **primary / secondary / mixed / review**, but
+- *(Optional)* **GO/KEGG proxy labels** for analysis / weak supervision: (Details see [GO/KEGG Proxy Labels](#gokegg-proxy-labels-optional).)
+  - KEGG proxy is reported as **primary / secondary / mixed / review**
   - GO proxy follows the project label scheme
 
 ---
@@ -63,83 +63,114 @@ We assume a tokenized TSV where each row is a Pfam hit for one protein, and prot
 
 ---
 
-## Quickstart
+## Data acquisition (NCBI / RefSeq)
 
-### 1) Prepare / check your TSV
+If you want to test a new genome and obtain **Transformer scoring results**, download FASTA from NCBI as follows.
 
-Put TSVs under something like:
+### Plant genomes
 
-```
-data/
-  train/
-    positives.pfam.tsv
-    negatives.pfam.tsv
-  plant_unlabeled/
-    plant_unlabeled.pfam.tsv
-  eval/
-    curated_plant_bgcs.pfam.tsv
-```
+Download the **RefSeq CDS** file:
 
-### 2) Train Stage 1 (microbial base)
+- **Genomic coding sequences (FASTA)**
 
-```bash
-python train_stage1.py \
-  --pos data/train/positives.pfam.tsv \
-  --neg data/train/negatives.pfam.tsv \
-  --out checkpoints/stage1.pt
-```
+This file is recommended for plant runs because PlantBGC produces **CDS/gene-level scores** and then aggregates them into **candidate loci**.
 
-### 3) Stage 2 adaptation (MLM on unlabeled plant Pfams)
+### Microbial genomes
 
-```bash
-python adapt_stage2_mlm.py \
-  --init checkpoints/stage1.pt \
-  --unlabeled data/plant_unlabeled/plant_unlabeled.pfam.tsv \
-  --out checkpoints/stage2.pt
-```
+Download the genome sequence file:
 
-### 4) Inference on plant genomes (Pfam TSV)
+- **Genome sequences (FASTA)**
 
-```bash
-python predict.py \
-  --model checkpoints/stage2.pt \
-  --input data/eval/plant_genome.pfam.tsv \
-  --out outputs/plant_candidates.tsv
-```
+For microbial inputs, PlantBGC can score across the genome sequence workflow as supported by the repo configuration.
 
 ---
 
-## Reproducing paper experiments (recommended layout)
+## Inputs
 
-### Stage 1 (microbial)
+PlantBGC typically uses:
 
-* 10-fold CV and leave-class-out evaluation
-* Compare: Transformer vs DeepBGC-style BiLSTM baseline vs shallow baseline (e.g., RF)
+### Required
 
-### Stage 2 (plants, no labels for training)
+- **FASTA**
+  - Plants: CDS FASTA (**Genomic coding sequences (FASTA)**)
+  - Microbes: Genome FASTA (**Genome sequences (FASTA)**)
 
-* Evaluate recovery of curated plant BGCs under increasing locus-coverage thresholds
-* Compare Stage1-only vs Stage2-adapted
-* Compare with plantiSMASH overlap/IoU + compactness (length ratio)
+### Recommended (for genomic coordinates)
 
-### Stage 3 (weak supervision, optional)
+- **Genome annotations** (e.g., **GFF/GBFF**)  
+  Used to map CDS units back to genomic coordinates for locus-level reporting.
 
-* Add GO/KEGG soft negatives (or other priors) to reduce primary-metabolism false positives
-* Compare Stage2 vs Stage3 on false positive rate and curated BGC coverage
+### Optional (for proxy labeling / weak supervision)
 
-> Scripts for each stage should be documented under `scripts/` (or update this README once finalized).
+- **GO/KEGG annotation tables**  
+  Used for proxy labeling, weak supervision, and downstream enrichment summaries.
+
+---
+
+## Outputs
+
+PlantBGC outputs are organized at three levels:
+
+1. **Token / Pfam-level scores**
+2. **CDS (gene)-level scores**
+3. **Candidate loci (candidate BGC loci)** aggregated from consecutive high-scoring CDS
 
 ---
 
-## Output
+## Locus aggregation rule (paper-aligned)
 
-Typical outputs include:
+A candidate locus is formed by:
 
-* per-token BGC-likeness scores
-* predicted candidate loci with boundaries (start/end in token space)
-* summary metrics (ROC-AUC, coverage thresholds, compactness vs plantiSMASH)
+- pooling **Pfam-level** scores into a **CDS-level** score
+- selecting CDS with **score > 0.5**
+- aggregating **strictly consecutive** selected CDS into loci
+- enforcing **minimum length = 3 CDS** and **gap = 0**
 
 ---
+
+## GO/KEGG Proxy Labels (optional)
+
+PlantBGC can optionally generate **proxy labels** from functional annotations to support analysis and weak supervision.
+In this project, **KEGG proxy is reported as _primary / secondary / mixed / review_** (paper-aligned).
+
+> GO proxy will be documented in a separate section (to be added).
+
+### KEGG proxy: how to obtain KO numbers
+
+To produce KEGG proxy labels, you first need **KO numbers** (K identifiers) for genes/proteins in your predicted loci.
+
+#### Recommended (simplest): KEGG web mapping (BlastKOALA / GhostKOALA)
+
+Local KO mapping can be non-trivial due to database licensing/availability, profile resources, and environment setup.
+For most users, we recommend using the official KEGG KO assignment service:
+
+1. Prepare a FASTA file of coding sequences/proteins to annotate  
+   - For plants, we typically start from **RefSeq CDS FASTA** and then use the translated proteins (or protein FASTA if available).  
+2. Upload the FASTA to **BlastKOALA** (or **GhostKOALA** for large-scale submissions)  
+3. Download the KO assignment output (gene/protein → KO number mapping)  
+4. Feed the KO mapping file into PlantBGC to generate locus-level KEGG proxy labels
+
+PlantBGC will then aggregate KO-derived category signals within each **candidate BGC locus** and output a locus-level label:
+**primary / secondary / mixed / review**.
+
+#### Optional: local deployment (advanced)
+
+If you prefer a fully local pipeline, KO mapping can be performed with tools such as:
+- **KofamScan** (profile HMM-based KO assignment using KOfam HMMs)
+- other HMMER-based KO assignment workflows
+
+For most workflows, the web-based KO assignment above is the fastest path to obtain KO numbers.
+
+### Generating KEGG proxy labels in PlantBGC
+
+Once you have the KO mapping (gene/protein → KO), run PlantBGC’s proxy module to:
+- map KO to functional categories used by our proxy scheme
+- aggregate per-gene evidence into **locus-level** proxy labels
+- export per-locus label summaries for downstream analysis
+
+> The exact command depends on the repo version. See `scripts/` (or the pipeline entrypoint) for the KEGG proxy labeling utility.
+
+
 
 ## Repository structure (suggested)
 

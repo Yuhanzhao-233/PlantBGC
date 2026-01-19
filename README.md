@@ -1,4 +1,4 @@
-# PlantBGC: Transformer-based Plant Biosynthetic Gene Cluster Detection
+# PlantBGC: Transformer for Plant BGC Discovery via Label-Free Domain Adaptation and Weak Supervision
 
 PlantBGC detects candidate biosynthetic gene clusters (BGCs) in **plant genomes** by modeling genomes as **ordered Pfam-domain sequences** and scoring BGC-likeness with an **encoder-only Transformer**.
 The framework supports (i) microbial supervised pretraining, (ii) **label-free plant domain adaptation** via masked language modeling (MLM), and (iii) optional weak-supervision strategies to reduce primary-metabolism false positives while preserving secondary-metabolism signals.

@@ -1,0 +1,9 @@
+global-exclude __pycache__ *.py[cod]
+recursive-exclude plantbgc __pycache__ *.py[cod]
+
+recursive-exclude notebooks *
+recursive-exclude output *
+recursive-exclude output_path *
+
+global-exclude *.pkl *.pt *.pth
+global-exclude .DS_Store

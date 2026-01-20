@@ -1,0 +1,70 @@
+# =========================
+# PlantBGC .gitignore
+# Keep repo clean: code/configs in, generated stuff out.
+# =========================
+
+# ---- Python bytecode / cache ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ---- Build / packaging ----
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+*.whl
+
+# ---- Virtual environments ----
+.venv/
+venv/
+env/
+ENV/
+.conda/
+conda-env/
+
+# ---- IDE / editor ----
+.idea/
+.vscode/
+
+# ---- OS / file manager ----
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ---- Jupyter ----
+.ipynb_checkpoints/
+
+# ---- Test / tooling ----
+.pytest_cache/
+.coverage
+htmlcov/
+.cache/
+
+# ---- Logs ----
+*.log
+
+# ---- Project generated outputs (VERY IMPORTANT) ----
+output/
+outputs/
+work/
+tmp/
+temp/
+
+# ---- Model / large artifacts (adjust if you truly want to version them) ----
+*.pkl
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.npz
+*.npy
+*.tar.gz
+*.zip
+
+# ---- Random backups ----
+*~
+~*

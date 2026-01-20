@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plantbgc"
+version = "0.1.0"
+description = "PlantBGC: Transformer-based biosynthetic gene cluster candidate detection for plant genomes"
+readme = "README.md"
+requires-python = ">=3.7,<3.9"
+license = { text = "MIT" }
+
+authors = [
+  { name = "Yuhan Zhao", email = "yzhao66@ncsu.edu" }
+]
+
+keywords = ["bioinformatics", "BGC", "transformer", "plants"]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+
+# 最少也要把你实际 import 到的写上，否则别人装完就报错
+dependencies = [
+  "biopython>=1.78",
+  "numpy==1.16.1",
+  "pandas==0.24.1",
+  "scikit-learn==0.21.3",
+  "scipy==1.2.0",
+  "matplotlib==2.2.3",
+  "keras==2.2.4",
+  "tensorflow==1.15.4",
+  "appdirs>=1.4.3",
+  "protobuf<4"
+]
+# 如果你有命令行入口：plantbgc --help
+[project.scripts]
+plantbgc = "plantbgc.main:main"
+
+[tool.setuptools]
+# 让 setuptools 自动找包，包含子包（pipeline 等）
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["plantbgc*"]
+
+# 如果你包里有非 .py 文件（比如 data 里的模型、配置等），需要打开这个
+[tool.setuptools.package-data]
+plantbgc = ["**/*"]

@@ -39,7 +39,7 @@ pip install -r requirements.txt
 ### Option B: pip (if you enjoy pain)
 
 ```bash
-pip install -r requirements.txt
+pip install plantbgc
 ```
 
 > If you rely on external gene calling / Pfam annotation tools, install them separately and ensure they are on PATH.

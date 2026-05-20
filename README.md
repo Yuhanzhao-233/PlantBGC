@@ -42,6 +42,14 @@ pip install -r requirements.txt
 pip install plantbgc
 ```
 
+### Command
+
+```bash
+# Show command help docs
+plantbgc pipeline --help
+
+```
+
 > If you rely on external gene calling / Pfam annotation tools, install them separately and ensure they are on PATH.
 
 ---
